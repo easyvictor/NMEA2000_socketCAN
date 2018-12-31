@@ -73,7 +73,7 @@ bool tNMEA2000_SocketCAN::CANOpen() {
     if(skt < 0) {
         cerr << "Failed open CAN socket: " << _CANport << endl;
         return (false);
-        }
+    }
 
     strncpy(ifr.ifr_name, _CANport, (sizeof(ifr.ifr_name)-1));
     ifr.ifr_name[sizeof(ifr.ifr_name) - 1] = '\0';                                          //  (And make sure to null terminate)
@@ -81,27 +81,32 @@ bool tNMEA2000_SocketCAN::CANOpen() {
     if (ioctl(skt, SIOCGIFINDEX, &ifr) < 0) {
         cerr << "Failed CAN ioctl: " << ifr.ifr_name << endl;
         return (false);
-        }
+    }
 
     addr.can_family = AF_CAN;
     addr.can_ifindex = ifr.ifr_ifindex;
     if (bind(skt, (struct sockaddr *)&addr, sizeof(addr)) < 0)  {
         cerr << "Failed CAN bind" << endl;
         return (false);
-        }
+    }
 
 
-    //----- Set socket for non-blocking
+    //----- Set socket for blocking
     flags = fcntl(skt, F_GETFL, 0);
     if (flags < 0) {
         cerr << "Failed CAN flag fetch" << endl;
         return (false);
-        }
+    }
 
-    if (fcntl(skt, F_SETFL, flags | O_NONBLOCK) < 0) {
+    if (fcntl(skt, F_SETFL, flags & ~O_NONBLOCK) < 0) {
         cerr << "Failed CAN flag set" << endl;
         return (false);
-        }
+    }
+
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000; // microseconds
+    setsockopt(skt, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     return true;
 }
@@ -125,24 +130,15 @@ bool tNMEA2000_SocketCAN::CANSendFrame(unsigned long id, unsigned char len, cons
 //*****************************************************************************
 bool tNMEA2000_SocketCAN::CANGetFrame(unsigned long &id, unsigned char &len, unsigned char *buf) {
     struct can_frame frame_rd;
-    struct timeval tv = {0, 0};                                                 // Non-blocking timout when checking
-    fd_set fds;
 
-    FD_ZERO(&fds);
-    FD_SET(skt, &fds);
-
-    if (select((skt + 1), &fds, NULL, NULL, &tv) < 0)                           // Is there a FD with something to read out there?
+    if (read(skt, &frame_rd, sizeof(frame_rd)) > 0) {
+        memcpy(buf, frame_rd.data, 8);
+        len = frame_rd.can_dlc;
+        id  = frame_rd.can_id;
+        return true;
+    } else {
         return false;
-
-    if (FD_ISSET(skt, &fds)) {                                                  // Was it our CAN file-descriptor that is ready?
-        if (read(skt, &frame_rd, sizeof(frame_rd)) > 0) {
-            memcpy(buf, frame_rd.data, 8);
-            len = frame_rd.can_dlc;
-            id  = frame_rd.can_id;
-            return true;
-            }
-        }
-    return false;
+    }
 
 }
 
