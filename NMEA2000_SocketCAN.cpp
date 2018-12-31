@@ -150,7 +150,9 @@ bool tNMEA2000_SocketCAN::CANGetFrame(unsigned long &id, unsigned char &len, uns
 //*****************************************************************************
 tSocketStream::tSocketStream(const char *_port) : port(-1) {
   if ( _port!=0 ) {
-    port=open(_port, O_RDWR | O_NOCTTY | O_NDELAY | O_CREAT);
+    port=open(_port,
+      O_RDWR | O_NOCTTY | O_NDELAY | O_CREAT,
+      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   }
 
   if ( port!=-1 ) {
